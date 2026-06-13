@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tare.Cli/Tare.Cli.csproj" />
+    <Project Path="src/Tare.Core/Tare.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tare.Core.Tests/Tare.Core.Tests.csproj" />
+  </Folder>
+</Solution>
