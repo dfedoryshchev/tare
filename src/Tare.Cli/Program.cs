@@ -16,10 +16,10 @@ if (!File.Exists(path))
 }
 
 var source = File.ReadAllText(path);
-var blocks = BlockSplitter.Split(source);
+var blocks = MarkdownBlocker.Parse(source);
 
 Console.WriteLine($"{path}: {blocks.Count} block(s)");
 foreach (var block in blocks)
-    Console.WriteLine($"  [{block.Index}] lines {block.StartLine}-{block.EndLine} ({block.Text.Length} chars)");
+    Console.WriteLine($"  [{block.Index}] {block.Kind,-10} lines {block.StartLine}-{block.EndLine} ({block.Text.Length} chars)");
 
 return 0;
