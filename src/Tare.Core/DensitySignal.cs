@@ -34,9 +34,16 @@ public static class DensitySignal
             var fillerHits = FillerLexicon.Hits(block.Text);
 
             var restates = Math.Max(headingOverlap, prevOverlap) >= HighOverlap && novelRatio <= LowNovelty;
-            var flagged = restates || fillerHits.Count >= MinFillerHits;
+            var flaggedByDensity = restates || fillerHits.Count >= MinFillerHits;
 
-            results.Add(new DensityResult(block.Index, headingOverlap, prevOverlap, novelRatio, fillerHits, flagged));
+            // A block carrying a concrete fact is never pure filler, however stock its phrasing.
+            // The override protects the filler verdict only; an ungrounded number is still a
+            // grounding-gap finding elsewhere.
+            var factOverride = flaggedByDensity && FactDetector.HasConcreteFact(block);
+            var flagged = flaggedByDensity && !factOverride;
+
+            results.Add(new DensityResult(
+                block.Index, headingOverlap, prevOverlap, novelRatio, fillerHits, flagged, factOverride));
 
             foreach (var token in tokens)
             {

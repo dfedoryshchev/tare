@@ -48,6 +48,26 @@ public class DensitySignalTests
     }
 
     [Fact]
+    public void Does_not_flag_filler_phrasing_that_carries_a_fact()
+    {
+        var result = Assert.Single(
+            Evaluate("It is important to note that, at the end of the day, revenue grew 40%.\n"));
+
+        Assert.False(result.Flagged);
+        Assert.True(result.FactOverride);
+    }
+
+    [Fact]
+    public void Still_flags_filler_phrasing_with_no_fact()
+    {
+        var result = Assert.Single(
+            Evaluate("It is important to note that, at the end of the day, things move on.\n"));
+
+        Assert.True(result.Flagged);
+        Assert.False(result.FactOverride);
+    }
+
+    [Fact]
     public void Scores_only_prose_blocks()
     {
         var results = Evaluate("# Heading\n\nA real paragraph here.\n\n```\ncode();\n```\n");
