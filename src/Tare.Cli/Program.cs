@@ -1,3 +1,4 @@
+using Tare.Cli;
 using Tare.Core;
 
 // Minimal arg handling for now; a proper command surface (System.CommandLine)
@@ -16,10 +17,7 @@ if (!File.Exists(path))
 }
 
 var source = File.ReadAllText(path);
-var blocks = MarkdownBlocker.Parse(source);
-
-Console.WriteLine($"{path}: {blocks.Count} block(s)");
-foreach (var block in blocks)
-    Console.WriteLine($"  [{block.Index}] {block.Kind,-10} lines {block.StartLine}-{block.EndLine} ({block.Text.Length} chars)");
+var result = Analyzer.Analyze(source);
+Console.Write(Reporter.Render(path, result));
 
 return 0;
