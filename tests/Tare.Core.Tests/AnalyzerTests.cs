@@ -50,4 +50,38 @@ public class AnalyzerTests
         var keys = result.Findings.Select(f => (f.BlockIndex, f.StartChar)).ToList();
         Assert.Equal(keys.OrderBy(k => k.BlockIndex).ThenBy(k => k.StartChar).ToList(), keys);
     }
+
+    [Fact]
+    public void Does_not_score_claims_inside_a_code_fence()
+    {
+        // a specific claim buried in a code sample is not prose - the parser gates it out
+        var result = Analyzer.Analyze("```\nRevenue rose 20% last year.\n```\n");
+
+        Assert.Equal(Band.Clean, result.Band);
+        Assert.Empty(result.Findings);
+    }
+
+    [Fact]
+    public void Scores_a_claim_inside_a_list_item()
+    {
+        // list items are prose, so an ungrounded claim in one is still reported
+        var result = Analyzer.Analyze("- Engagement rose 40% in Q2.\n");
+
+        Assert.Contains(RuleIds.UngroundedClaim, result.Findings.Select(f => f.RuleId));
+    }
+
+    [Fact]
+    public void A_fact_dense_block_escapes_the_filler_flag()
+    {
+        var filler = Analyzer.Analyze(
+            "It is important to note that, at the end of the day, nothing really changes here.\n");
+        var grounded = Analyzer.Analyze(
+            "It is important to note that, at the end of the day, revenue fell 12% per the WHO report.\n");
+
+        // stock phrasing alone reads as filler
+        Assert.Contains(RuleIds.Filler, filler.Findings.Select(f => f.RuleId));
+        // the same phrasing carrying a concrete, grounded fact does not
+        Assert.DoesNotContain(RuleIds.Filler, grounded.Findings.Select(f => f.RuleId));
+        Assert.DoesNotContain(RuleIds.UngroundedClaim, grounded.Findings.Select(f => f.RuleId));
+    }
 }
