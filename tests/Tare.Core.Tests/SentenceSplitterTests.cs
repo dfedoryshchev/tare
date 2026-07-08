@@ -50,4 +50,40 @@ public class SentenceSplitterTests
 
         Assert.Single(sentences);
     }
+
+    [Fact]
+    public void Keeps_a_decimal_with_a_percent_sign_in_one_sentence()
+    {
+        var sentences = SentenceSplitter.Split(Prose("Adoption grew 3.5% this quarter. It held.\n"));
+
+        Assert.Equal(2, sentences.Count);
+        Assert.Equal("Adoption grew 3.5% this quarter.", sentences[0].Text);
+    }
+
+    [Fact]
+    public void Does_not_split_a_dotted_acronym()
+    {
+        var sentences = SentenceSplitter.Split(Prose("The U.S. economy grew last year. Prices rose sharply.\n"));
+
+        Assert.Equal(2, sentences.Count);
+        Assert.Equal("The U.S. economy grew last year.", sentences[0].Text);
+    }
+
+    [Fact]
+    public void Does_not_split_a_title_abbreviation()
+    {
+        var sentences = SentenceSplitter.Split(Prose("Dr. Smith shared the results today. Everyone agreed.\n"));
+
+        Assert.Equal(2, sentences.Count);
+        Assert.Equal("Dr. Smith shared the results today.", sentences[0].Text);
+    }
+
+    [Fact]
+    public void Does_not_split_a_latin_abbreviation_before_a_capital()
+    {
+        var sentences = SentenceSplitter.Split(Prose("We use a linter, e.g. Roslyn, on every build. It catches bugs.\n"));
+
+        Assert.Equal(2, sentences.Count);
+        Assert.Equal("We use a linter, e.g. Roslyn, on every build.", sentences[0].Text);
+    }
 }

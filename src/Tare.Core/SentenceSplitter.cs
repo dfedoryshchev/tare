@@ -1,13 +1,24 @@
+using System.Text.RegularExpressions;
+
 namespace Tare.Core;
 
 /// <summary>
-/// Splits prose block text into sentences. Deliberately naive: it breaks on a
-/// <c>.</c> / <c>!</c> / <c>?</c> terminator that is followed by whitespace and a capital
-/// letter (or the end of the block). Offsets stay aligned to the source so each sentence
-/// round-trips via <c>source.Substring(StartChar, EndChar - StartChar)</c>.
+/// Splits prose block text into sentences. It breaks on a <c>.</c> / <c>!</c> / <c>?</c>
+/// terminator that is followed by whitespace and a capital letter (or the end of the block),
+/// but a <c>.</c> inside a decimal (<c>3.5</c>) or closing a known abbreviation (<c>Dr.</c>,
+/// <c>U.S.</c>, <c>e.g.</c>) is not treated as a boundary. Offsets stay aligned to the source
+/// so each sentence round-trips via <c>source.Substring(StartChar, EndChar - StartChar)</c>.
 /// </summary>
-public static class SentenceSplitter
+public static partial class SentenceSplitter
 {
+    // Common abbreviations whose trailing period is not a sentence end. Dotted acronyms and
+    // Latin abbreviations (U.S., e.g., i.e., a.m.) are matched by pattern instead of listed.
+    private static readonly HashSet<string> Abbreviations = new(StringComparer.Ordinal)
+    {
+        "dr.", "mr.", "mrs.", "ms.", "prof.", "sr.", "jr.", "st.",
+        "vs.", "etc.", "no.", "fig.", "al.", "inc.", "ltd.", "co.", "cf.",
+    };
+
     public static IReadOnlyList<Sentence> Split(Block block)
     {
         var text = block.Text;
@@ -21,7 +32,11 @@ public static class SentenceSplitter
                 continue;
             }
 
-            // TODO: abbreviations / decimals - "e.g.", "U.S.", "Dr.", "3.5%" split wrongly here.
+            if (text[i] == '.' && IsAbbreviationOrDecimal(text, i))
+            {
+                continue;
+            }
+
             var next = i + 1;
             while (next < text.Length && char.IsWhiteSpace(text[next]))
             {
@@ -69,4 +84,27 @@ public static class SentenceSplitter
             block.StartChar + relStart,
             block.StartChar + relEnd));
     }
+
+    // A '.' that sits between two digits (a decimal) or closes a known / dotted abbreviation
+    // is not a sentence boundary.
+    private static bool IsAbbreviationOrDecimal(string text, int i)
+    {
+        if (i > 0 && i + 1 < text.Length && char.IsDigit(text[i - 1]) && char.IsDigit(text[i + 1]))
+        {
+            return true;
+        }
+
+        var start = i;
+        while (start > 0 && !char.IsWhiteSpace(text[start - 1]))
+        {
+            start--;
+        }
+
+        var token = text.Substring(start, i - start + 1).ToLowerInvariant();
+        return Abbreviations.Contains(token) || DottedAcronym().IsMatch(token);
+    }
+
+    // Repeated single-letter-plus-dot groups: "u.s.", "e.g.", "i.e.", "a.m.".
+    [GeneratedRegex(@"^(?:[a-z]\.)+$")]
+    private static partial Regex DottedAcronym();
 }
