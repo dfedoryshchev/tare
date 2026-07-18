@@ -64,8 +64,12 @@ public static partial class GroundingSignal
         return results;
     }
 
-    /// <summary>Aggregates per-claim verdicts into the grounding-gap metric.</summary>
-    public static GroundingGap Aggregate(IReadOnlyList<GroundingResult> results)
+    /// <summary>
+    /// Aggregates per-claim verdicts into the grounding-gap metric. <paramref name="minClaims"/>
+    /// (from config) sets how few claims count as too few for the ratio to be reliable.
+    /// </summary>
+    public static GroundingGap Aggregate(
+        IReadOnlyList<GroundingResult> results, int minClaims = MinClaimsForReliability)
     {
         var total = results.Count;
         if (total == 0)
@@ -74,7 +78,7 @@ public static partial class GroundingSignal
         }
 
         var ungrounded = results.Count(r => !r.Grounded);
-        return new GroundingGap(total, ungrounded, (double)ungrounded / total, total < MinClaimsForReliability);
+        return new GroundingGap(total, ungrounded, (double)ungrounded / total, total < minClaims);
     }
 
     private static (bool Grounded, string Reason) Ground(IReadOnlyList<Sentence> sentences, int index)

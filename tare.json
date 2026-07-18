@@ -1,0 +1,19 @@
+{
+  "weights": {
+    "grounding": 0.6,
+    "density": 0.4
+  },
+  "bands": {
+    "watch": 0.2,
+    "slop": 0.5
+  },
+  "density": {
+    "highOverlap": 0.5,
+    "lowNovelty": 0.35,
+    "minFillerHits": 2
+  },
+  "grounding": {
+    "minClaims": 3
+  },
+  "filler": []
+}

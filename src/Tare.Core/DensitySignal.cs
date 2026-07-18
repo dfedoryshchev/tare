@@ -8,13 +8,15 @@ namespace Tare.Core;
 /// </summary>
 public static class DensitySignal
 {
-    // Placeholder thresholds, calibrated against the corpus later. Named so tuning is one edit.
-    private const double HighOverlap = 0.5;
-    private const double LowNovelty = 0.35;
-    private const int MinFillerHits = 2;
+    /// <summary>Evaluates every prose block with the default thresholds.</summary>
+    public static IReadOnlyList<DensityResult> Evaluate(IReadOnlyList<Block> blocks) =>
+        Evaluate(blocks, TareOptions.Default);
 
-    /// <summary>Evaluates every prose block in document order; non-prose blocks are skipped.</summary>
-    public static IReadOnlyList<DensityResult> Evaluate(IReadOnlyList<Block> blocks)
+    /// <summary>
+    /// Evaluates every prose block in document order (non-prose blocks are skipped) using the
+    /// supplied thresholds and filler lexicon.
+    /// </summary>
+    public static IReadOnlyList<DensityResult> Evaluate(IReadOnlyList<Block> blocks, TareOptions options)
     {
         var results = new List<DensityResult>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -31,10 +33,11 @@ public static class DensitySignal
             var headingOverlap = Jaccard(tokens, Tokenizer.Tokenize(block.Heading ?? string.Empty));
             var prevOverlap = prevProse is null ? 0.0 : Jaccard(tokens, prevProse);
             var novelRatio = NovelRatio(tokens, seen);
-            var fillerHits = FillerLexicon.Hits(block.Text);
+            var fillerHits = FillerLexicon.Hits(block.Text, options.Filler);
 
-            var restates = Math.Max(headingOverlap, prevOverlap) >= HighOverlap && novelRatio <= LowNovelty;
-            var flaggedByDensity = restates || fillerHits.Count >= MinFillerHits;
+            var restates = Math.Max(headingOverlap, prevOverlap) >= options.HighOverlap
+                && novelRatio <= options.LowNovelty;
+            var flaggedByDensity = restates || fillerHits.Count >= options.MinFillerHits;
 
             // A block carrying a concrete fact is never pure filler, however stock its phrasing.
             // The override protects the filler verdict only; an ungrounded number is still a

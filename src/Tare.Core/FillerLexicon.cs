@@ -7,7 +7,11 @@ namespace Tare.Core;
 /// </summary>
 public static class FillerLexicon
 {
-    private static readonly string[] Phrases =
+    /// <summary>
+    /// The built-in filler phrases (all lower-case). Config can extend this list via
+    /// <see cref="TareOptions.Filler"/>, but the default set is always present.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Default = new[]
     {
         "it is important to note",
         "in today's world",
@@ -20,11 +24,11 @@ public static class FillerLexicon
     };
 
     /// <summary>Returns the filler phrases present in the text (lowercased match), in order.</summary>
-    public static IReadOnlyList<string> Hits(string text)
+    public static IReadOnlyList<string> Hits(string text, IReadOnlyList<string> phrases)
     {
         var lower = text.ToLowerInvariant();
         var hits = new List<string>();
-        foreach (var phrase in Phrases)
+        foreach (var phrase in phrases)
         {
             if (lower.Contains(phrase, StringComparison.Ordinal))
             {

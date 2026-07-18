@@ -8,15 +8,14 @@ namespace Tare.Core;
 /// </summary>
 public static class Analyzer
 {
-    // Score weights and band cutoffs are first-guess placeholders, calibrated later. Named so
-    // tuning is one edit.
-    private const double GroundingWeight = 0.6;
-    private const double DensityWeight = 0.4;
-    private const double WatchAt = 0.2;
-    private const double SlopAt = 0.5;
-
-    public static AnalysisResult Analyze(string source)
+    /// <summary>
+    /// Analyses <paramref name="source"/> with the given <paramref name="options"/> (weights,
+    /// band cutoffs, density thresholds, filler lexicon); passing none uses the calibrated
+    /// defaults.
+    /// </summary>
+    public static AnalysisResult Analyze(string source, TareOptions? options = null)
     {
+        options ??= TareOptions.Default;
         var blocks = MarkdownBlocker.Parse(source);
         var findings = new List<Finding>();
 
@@ -45,7 +44,7 @@ public static class Analyzer
             }
         }
 
-        var density = DensitySignal.Evaluate(blocks);
+        var density = DensitySignal.Evaluate(blocks, options);
         foreach (var result in density)
         {
             if (!result.Flagged)
@@ -64,11 +63,12 @@ public static class Analyzer
         }
 
         findings.Sort(Order);
-        var score = Score(grounding, density);
-        return new AnalysisResult(score, ToBand(score), findings);
+        var score = Score(grounding, density, options);
+        return new AnalysisResult(score, ToBand(score, options), findings);
     }
 
-    private static double Score(IReadOnlyList<GroundingResult> grounding, IReadOnlyList<DensityResult> density)
+    private static double Score(
+        IReadOnlyList<GroundingResult> grounding, IReadOnlyList<DensityResult> density, TareOptions options)
     {
         var groundingGap = grounding.Count == 0
             ? 0.0
@@ -76,11 +76,11 @@ public static class Analyzer
         var densityRate = density.Count == 0
             ? 0.0
             : (double)density.Count(d => d.Flagged) / density.Count;
-        return GroundingWeight * groundingGap + DensityWeight * densityRate;
+        return options.GroundingWeight * groundingGap + options.DensityWeight * densityRate;
     }
 
-    private static Band ToBand(double score) =>
-        score >= SlopAt ? Band.Slop : score >= WatchAt ? Band.Watch : Band.Clean;
+    private static Band ToBand(double score, TareOptions options) =>
+        score >= options.SlopAt ? Band.Slop : score >= options.WatchAt ? Band.Watch : Band.Clean;
 
     // Deterministic report order: by block, then character offset, then rule id.
     private static int Order(Finding x, Finding y)
