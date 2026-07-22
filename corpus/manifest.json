@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "file": "clean-grounded-report.md",
+      "band": "Clean",
+      "rules": [],
+      "note": "every specific claim carries a link, a study, or an inline citation"
+    },
+    {
+      "file": "clean-terse-notes.md",
+      "band": "Clean",
+      "rules": [],
+      "note": "plain migration notes with no specific claims at all - terse prose must not be punished for being terse"
+    },
+    {
+      "file": "clean-code-heavy.md",
+      "band": "Clean",
+      "rules": [],
+      "note": "mostly fenced samples; the little prose around them is unremarkable"
+    },
+    {
+      "file": "watch-mixed-sourcing.md",
+      "band": "Watch",
+      "rules": ["GROUND001"],
+      "note": "one sourced number followed by three that are not - the ordinary shape of a rushed draft"
+    },
+    {
+      "file": "watch-light-filler.md",
+      "band": "Watch",
+      "rules": ["FILLER001"],
+      "note": "one padded block, one solid one. Scores 0.20 exactly, which pins the Watch cutoff as inclusive"
+    },
+    {
+      "file": "slop-ungrounded-stats.md",
+      "band": "Slop",
+      "rules": ["GROUND001"],
+      "note": "five numbers, no sources"
+    },
+    {
+      "file": "slop-restatement.md",
+      "band": "Slop",
+      "rules": ["DENSITY001", "GROUND001"],
+      "note": "paragraphs that say the heading back. The causal verbs also read as claims, and none of them are sourced"
+    },
+    {
+      "file": "slop-filler-padding.md",
+      "band": "Slop",
+      "rules": ["FILLER001"],
+      "knownGap": "scores 0.40 and lands in Watch. Nothing here is a claim, so the grounding half of the score is zero, and density is weighted 0.4 - a document made entirely of stock transitions cannot reach the Slop cutoff of 0.5 no matter how bad it gets. The band is the label a reader would give it; the weighting is what has to move.",
+      "note": "pure padding, no claims, no facts"
+    },
+    {
+      "file": "edge-facts-in-filler-phrasing.md",
+      "band": "Clean",
+      "rules": [],
+      "note": "stock phrasing wrapped around real sourced numbers - the facts override has to hold here or the filler rule eats honest writing"
+    },
+    {
+      "file": "edge-claims-in-code.md",
+      "band": "Clean",
+      "rules": [],
+      "note": "the only specific claims sit inside a fence, where they are sample output rather than assertions"
+    }
+  ]
+}
