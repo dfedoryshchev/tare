@@ -1,70 +1,147 @@
+using System.CommandLine;
 using System.Text.Json;
 using Tare.Cli;
 using Tare.Core;
 
-// Minimal arg handling for now; a proper command surface (System.CommandLine)
-// arrives once there is more than one verb to route (bench, S10).
-if (args.Length < 2 || args[0] != "analyze")
-{
-    Console.Error.WriteLine("usage: tare analyze <file> [--json] [--config <path>]");
-    return 1;
-}
+// Two verbs now, so the hand-rolled arg walk from the analyze-only days is gone.
+// System.CommandLine owns routing, help and error text; everything below is glue between the
+// parsed values and Tare.Core, which still does no IO of its own.
 
-var json = args.Contains("--json");
-var path = FirstInputPath(args);
-if (path is null)
+var fileArgument = new Argument<FileInfo>("file")
 {
-    Console.Error.WriteLine("usage: tare analyze <file> [--json] [--config <path>]");
-    return 1;
-}
+    Description = "the markdown document to analyze",
+};
 
-if (!File.Exists(path))
+var jsonOption = new Option<bool>("--json")
 {
-    Console.Error.WriteLine($"error: file not found: {path}");
-    return 1;
-}
+    Description = "emit the report as JSON instead of console text",
+};
 
-// Config resolution: an explicit --config wins; otherwise a tare.json beside the working
-// directory is picked up automatically; otherwise the calibrated defaults apply.
-var configPath = ConfigOption(args) ?? (File.Exists("tare.json") ? "tare.json" : null);
-TareOptions options;
-try
+var configOption = new Option<FileInfo?>("--config")
 {
-    options = configPath is null ? TareOptions.Default : TareOptions.FromJson(File.ReadAllText(configPath));
-}
-catch (JsonException ex)
+    Description = "path to a tare.json; defaults to one in the working directory if present",
+};
+
+var corpusOption = new Option<DirectoryInfo>("--corpus")
 {
-    Console.Error.WriteLine($"error: invalid config {configPath}: {ex.Message}");
-    return 1;
-}
+    Description = "the labeled corpus directory (expects manifest.json and cases/)",
+    DefaultValueFactory = _ => new DirectoryInfo("corpus"),
+};
 
-var source = File.ReadAllText(path);
-var result = Analyzer.Analyze(source, options);
-Console.Write(json ? JsonReport.Serialize(result) + "\n" : Reporter.Render(path, result));
-
-return 0;
-
-// Returns the value passed to --config, or null if the flag is absent.
-static string? ConfigOption(string[] args)
+var analyze = new Command("analyze", "Score a document and report its findings")
 {
-    var i = Array.IndexOf(args, "--config");
-    return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
-}
+    fileArgument,
+    jsonOption,
+    configOption,
+};
 
-// The input file is the first bare argument (after the verb) that is neither a flag nor the
-// value consumed by --config.
-static string? FirstInputPath(string[] args)
+analyze.SetAction(parse =>
 {
-    var configValue = ConfigOption(args);
-    for (var i = 1; i < args.Length; i++)
+    var file = parse.GetValue(fileArgument)!;
+    if (!file.Exists)
     {
-        if (args[i].StartsWith("--") || args[i] == configValue)
-        {
-            continue;
-        }
-
-        return args[i];
+        Console.Error.WriteLine($"error: file not found: {file.FullName}");
+        return 1;
     }
 
-    return null;
+    if (!TryLoadOptions(parse.GetValue(configOption), out var options))
+    {
+        return 1;
+    }
+
+    var result = Analyzer.Analyze(File.ReadAllText(file.FullName), options);
+    Console.Write(parse.GetValue(jsonOption)
+        ? JsonReport.Serialize(result) + "\n"
+        : Reporter.Render(file.Name, result));
+    return 0;
+});
+
+var bench = new Command("bench", "Score the analyzer against the labeled corpus")
+{
+    corpusOption,
+    configOption,
+};
+
+bench.SetAction(parse =>
+{
+    var corpus = parse.GetValue(corpusOption)!;
+    var manifest = new FileInfo(Path.Combine(corpus.FullName, "manifest.json"));
+    if (!manifest.Exists)
+    {
+        Console.Error.WriteLine($"error: no corpus manifest at {manifest.FullName}");
+        return 1;
+    }
+
+    if (!TryLoadOptions(parse.GetValue(configOption), out var options))
+    {
+        return 1;
+    }
+
+    IReadOnlyList<BenchCase> cases;
+    try
+    {
+        cases = BenchCase.FromJson(File.ReadAllText(manifest.FullName));
+    }
+    catch (JsonException ex)
+    {
+        Console.Error.WriteLine($"error: invalid corpus manifest {manifest.FullName}: {ex.Message}");
+        return 1;
+    }
+
+    var results = new List<AnalysisResult>(cases.Count);
+    foreach (var c in cases)
+    {
+        var path = Path.Combine(corpus.FullName, "cases", c.File);
+        if (!File.Exists(path))
+        {
+            Console.Error.WriteLine($"error: corpus case not found: {path}");
+            return 1;
+        }
+
+        results.Add(Analyzer.Analyze(File.ReadAllText(path), options));
+    }
+
+    var report = Bench.Score(cases, results);
+    Console.Write(BenchReporter.Render(report));
+
+    // A regression against the labels fails the run; known gaps do not. The separate
+    // --fail-on gate for analysing a real draft in CI is a different thing and comes later.
+    return report.Regressions.Count == 0 ? 0 : 1;
+});
+
+var root = new RootCommand("tare - writing-integrity checks for long-form drafts")
+{
+    analyze,
+    bench,
+};
+
+return root.Parse(args).Invoke();
+
+// An explicit --config wins; otherwise a tare.json beside the working directory is picked up
+// automatically; otherwise the calibrated defaults apply. Returns false once it has reported.
+static bool TryLoadOptions(FileInfo? explicitConfig, out TareOptions options)
+{
+    options = TareOptions.Default;
+    var path = explicitConfig?.FullName ?? (File.Exists("tare.json") ? "tare.json" : null);
+    if (path is null)
+    {
+        return true;
+    }
+
+    if (!File.Exists(path))
+    {
+        Console.Error.WriteLine($"error: config not found: {path}");
+        return false;
+    }
+
+    try
+    {
+        options = TareOptions.FromJson(File.ReadAllText(path));
+        return true;
+    }
+    catch (JsonException ex)
+    {
+        Console.Error.WriteLine($"error: invalid config {path}: {ex.Message}");
+        return false;
+    }
 }
