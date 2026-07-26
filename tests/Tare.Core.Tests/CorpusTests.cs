@@ -8,7 +8,10 @@ namespace Tare.Core.Tests;
 /// from recording what the analyzer said, so these tests are the place a scoring change gets
 /// argued with. A case carrying a <c>knownGap</c> is one the code currently gets wrong on
 /// purpose: its band is not asserted, but it still has to fire the rules it is labeled with,
-/// which stops a "fix" that simply silences the case from passing.
+/// which stops a "fix" that simply silences the case from passing. A case carrying
+/// <c>knownFalsePositives</c> is one where a rule fires that should not; the firing is
+/// declared rather than tolerated silently, and the declaration is asserted too, so closing
+/// the gap means deleting the declaration.
 /// </summary>
 public class CorpusTests
 {
@@ -47,7 +50,11 @@ public class CorpusTests
         var result = Analyzer.Analyze(File.ReadAllText(Corpus.PathOf(file)));
 
         var fired = result.Findings.Select(f => f.RuleId).Distinct().Order().ToList();
-        Assert.Equal(c.Rules.Order().ToList(), fired);
+        var allowed = c.Rules.Concat(c.KnownFalsePositives ?? []).Distinct().Order().ToList();
+
+        // Nothing may fire that the case has not either asked for or declared as a known
+        // false positive, and everything asked for must still fire.
+        Assert.Equal(allowed, fired);
     }
 
     [Fact]
@@ -71,6 +78,19 @@ public class CorpusTests
         foreach (var c in Corpus.Load())
         {
             Assert.All(c.Rules, id => Assert.Contains(id, known));
+            Assert.All(c.KnownFalsePositives ?? [], id => Assert.Contains(id, known));
+        }
+    }
+
+    /// <summary>
+    /// A case cannot both ask for a rule and excuse it - that would assert nothing at all.
+    /// </summary>
+    [Fact]
+    public void No_case_both_expects_and_excuses_the_same_rule()
+    {
+        foreach (var c in Corpus.Load())
+        {
+            Assert.Empty(c.Rules.Intersect(c.KnownFalsePositives ?? []));
         }
     }
 }
@@ -109,4 +129,5 @@ internal sealed record CorpusCase(
     string Band,
     List<string> Rules,
     string? KnownGap,
-    string? Note);
+    string? Note,
+    List<string>? KnownFalsePositives);

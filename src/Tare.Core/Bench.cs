@@ -70,11 +70,23 @@ public sealed record CaseOutcome(
     public bool RulesMatched => FalsePositives.Count == 0 && Missed.Count == 0;
 
     /// <summary>
-    /// A regression is any rule mismatch, plus a band mismatch on a case that is not a known
-    /// gap. Known gaps are expected to score wrong until the gap is closed, so they are
-    /// reported without failing the run - but their rules are still held to the label.
+    /// False positives the corpus already knows about and has not fixed yet. Anything outside
+    /// this set is a new one.
     /// </summary>
-    public bool Regressed => !RulesMatched || (!BandMatched && Case.KnownGap is null);
+    public IReadOnlyList<string> UnexpectedFalsePositives =>
+        FalsePositives.Except(Case.KnownFalsePositives ?? [], StringComparer.Ordinal).ToList();
+
+    /// <summary>
+    /// A regression is a miss, a false positive the corpus has not already declared, or a
+    /// band mismatch on a case that is not a known gap. Declared gaps are expected to score
+    /// wrong until the gap is closed, so they are reported without failing the run - and they
+    /// are still counted in precision and the false-positive rate, which is the number that
+    /// has to move before the declaration can be deleted.
+    /// </summary>
+    public bool Regressed =>
+        Missed.Count > 0
+        || UnexpectedFalsePositives.Count > 0
+        || (!BandMatched && Case.KnownGap is null);
 }
 
 /// <summary>

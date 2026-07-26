@@ -6,14 +6,18 @@ namespace Tare.Core;
 /// One labeled corpus case: the document's file name, the band a reader would give it, and
 /// the set of rule ids expected to fire somewhere in it. <see cref="KnownGap"/> holds the
 /// reason a case is currently scored wrong on purpose - its band is reported but not counted
-/// as a regression, while its rules still are.
+/// as a regression, while its rules still are. <see cref="KnownFalsePositives"/> does the
+/// same job one level down, for a rule that fires on a case where it should not: the firing
+/// is excused from the pass/fail verdict but still counted in the metrics, so the
+/// false-positive rate keeps telling the truth about the tool.
 /// </summary>
 public sealed record BenchCase(
     string File,
     Band Band,
     IReadOnlyList<string> Rules,
     string? KnownGap = null,
-    string? Note = null)
+    string? Note = null,
+    IReadOnlyList<string>? KnownFalsePositives = null)
 {
     private static readonly JsonSerializerOptions ParseOptions = new()
     {
@@ -42,7 +46,8 @@ public sealed record BenchCase(
                 c.Band,
                 c.Rules ?? [],
                 c.KnownGap,
-                c.Note))
+                c.Note,
+                c.KnownFalsePositives ?? []))
             .ToList();
     }
 
@@ -58,5 +63,6 @@ public sealed record BenchCase(
         public List<string>? Rules { get; init; }
         public string? KnownGap { get; init; }
         public string? Note { get; init; }
+        public List<string>? KnownFalsePositives { get; init; }
     }
 }

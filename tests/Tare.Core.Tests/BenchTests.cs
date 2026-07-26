@@ -88,6 +88,54 @@ public class BenchTests
     }
 
     [Fact]
+    public void A_declared_false_positive_does_not_fail_the_run()
+    {
+        var report = Bench.Score(
+            [new BenchCase(
+                "a.md",
+                Band.Clean,
+                [],
+                KnownGap: "prose attribution is not a source signal",
+                KnownFalsePositives: [RuleIds.UngroundedClaim])],
+            [Result(Band.Slop, RuleIds.UngroundedClaim)]);
+
+        Assert.Empty(report.Regressions);
+    }
+
+    [Fact]
+    public void A_declared_false_positive_is_still_counted_against_precision()
+    {
+        // the whole point of declaring it is that the number stays honest until it is fixed
+        var report = Bench.Score(
+            [new BenchCase(
+                "a.md",
+                Band.Clean,
+                [],
+                KnownGap: "prose attribution is not a source signal",
+                KnownFalsePositives: [RuleIds.UngroundedClaim])],
+            [Result(Band.Slop, RuleIds.UngroundedClaim)]);
+
+        Assert.Equal(1, report.FalsePositives);
+        Assert.Equal(0.0, report.Precision);
+        Assert.Equal(1.0 / 3, report.FalsePositiveRate, 6);
+    }
+
+    [Fact]
+    public void An_undeclared_false_positive_on_the_same_case_still_regresses()
+    {
+        var report = Bench.Score(
+            [new BenchCase(
+                "a.md",
+                Band.Clean,
+                [],
+                KnownFalsePositives: [RuleIds.UngroundedClaim])],
+            [Result(Band.Clean, RuleIds.UngroundedClaim, RuleIds.Filler)]);
+
+        Assert.Single(report.Regressions);
+        Assert.Equal([RuleIds.Filler], report.Outcomes[0].UnexpectedFalsePositives);
+    }
+
+    [Fact]
     public void Reports_perfect_ratios_for_an_empty_denominator()
     {
         // nothing labeled and nothing fired means nothing was got wrong, not a divide by zero
@@ -144,6 +192,13 @@ public class BenchTests
         var report = Bench.Score(cases, results);
 
         Assert.Empty(report.Regressions);
-        Assert.Equal(1, report.KnownGaps);
+        Assert.Equal(4, report.KnownGaps);
+
+        // Recall is the easy half and has to stay perfect. Precision is not: the fairness
+        // cases cost 3 false positives on GROUND001, and the number is pinned here so the
+        // tuning that removes them shows up as a change rather than as a quiet improvement.
+        Assert.Equal(1.0, report.Recall);
+        Assert.Equal(3, report.FalsePositives);
+        Assert.Equal(2.0 / 3, report.Precision, 6);
     }
 }
