@@ -192,13 +192,21 @@ public class BenchTests
         var report = Bench.Score(cases, results);
 
         Assert.Empty(report.Regressions);
-        Assert.Equal(4, report.KnownGaps);
 
-        // Recall is the easy half and has to stay perfect. Precision is not: the fairness
-        // cases cost 3 false positives on GROUND001, and the number is pinned here so the
-        // tuning that removes them shows up as a change rather than as a quiet improvement.
+        // Down from four: the three fairness cases that cost a GROUND001 false positive each
+        // are fixed and their declarations are gone, leaving only the density-weighting gap
+        // on slop-filler-padding, which is a miss rather than a false alarm and is a separate
+        // argument. Pinned so that closing it has to be a deliberate change.
+        Assert.Equal(1, report.KnownGaps);
+
+        // Recall was already perfect and the tuning was not allowed to cost any of it - the
+        // slop and watch cases still fire exactly what they are labeled with. Precision moved
+        // from 2/3 to 1.0 and the false-positive rate from 7.7% to zero; pinned here so the
+        // next signal change has to argue with the numbers rather than drift past them.
         Assert.Equal(1.0, report.Recall);
-        Assert.Equal(3, report.FalsePositives);
-        Assert.Equal(2.0 / 3, report.Precision, 6);
+        Assert.Equal(6, report.TruePositives);
+        Assert.Equal(0, report.FalsePositives);
+        Assert.Equal(1.0, report.Precision);
+        Assert.Equal(0.0, report.FalsePositiveRate);
     }
 }

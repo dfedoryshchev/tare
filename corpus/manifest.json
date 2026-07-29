@@ -71,25 +71,19 @@
       "file": "fair-terse-ops-log.md",
       "band": "Clean",
       "rules": [],
-      "knownFalsePositives": ["GROUND001"],
-      "knownGap": "lands in Slop at 0.60. Three sentences are read as unsourced claims: two are the author's own observations of a system they were watching at the time, and one is attributed in prose the grounding rule does not recognise. There is no citation for having been paged at 02:14 - the writer is the instrument - so either self-reported observation is a claim class grounding does not apply to, or terse operational writing is permanently penalised for being specific.",
-      "note": "an incident log - the shape of writing that is all facts and no citations"
+      "note": "an incident log - the shape of writing that is all facts and no citations. Settled the self-reported-observation question: a sentence whose only specific content is a wall-clock time is not a borrowed fact, so grounding does not apply to it"
     },
     {
       "file": "fair-non-native-report.md",
       "band": "Clean",
       "rules": [],
-      "knownFalsePositives": ["GROUND001"],
-      "knownGap": "lands in Slop at 0.60. The percentages are grounded by the next sentence, which says where the dashboard lives, but 'the dashboard link is in the handover document' matches no source pattern - the rule wants a URL, a footnote, a bracketed reference or a named institution, and ordinary prose attribution counts for nothing.",
-      "note": "non-native English, grounded work, plainly reported"
+      "note": "non-native English, grounded work, plainly reported. The percentages are grounded by the next sentence saying where the dashboard lives, which is now a source signal in its own right"
     },
     {
       "file": "fair-non-native-formal.md",
       "band": "Clean",
       "rules": [],
-      "knownFalsePositives": ["GROUND001"],
-      "knownGap": "lands in Slop at 0.60. Both flagged blocks state where their numbers came from - 'measured by the counters exported to the metrics backend' and 'according to the same dashboard' - and neither phrasing is a source signal to the rule. This is the fairness case that matters most: the formal register taught in English-as-a-second-language writing attributes in prose rather than with links.",
-      "note": "heavy stock connectives over real sourced numbers. The filler rule stays quiet here, which is the facts override doing its job"
+      "note": "heavy stock connectives over real sourced numbers, attributed in prose rather than with links ('measured by the counters exported to the metrics backend', 'according to the same dashboard'). The filler rule stays quiet here, which is the facts override doing its job"
     },
     {
       "file": "fair-non-native-plain.md",
