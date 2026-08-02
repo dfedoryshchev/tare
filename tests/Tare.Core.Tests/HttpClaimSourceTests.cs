@@ -124,16 +124,4 @@ public class HttpClaimSourceTests
             () => source.CheckAsync(Cited("https://example.com/report"), cancelled.Token));
         Assert.Empty(handler.Requests);
     }
-
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
-    {
-        public List<HttpRequestMessage> Requests { get; } = new();
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            Requests.Add(request);
-            return Task.FromResult(respond(request));
-        }
-    }
 }
