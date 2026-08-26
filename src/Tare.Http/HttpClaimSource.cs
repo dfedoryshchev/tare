@@ -66,7 +66,10 @@ public sealed class HttpClaimSource(HttpClient client) : IClaimSource
 
             using (response)
             {
-                return new CitationCheck(citation, Classify(response.StatusCode), Describe(response.StatusCode));
+                return new CitationCheck(
+                    citation,
+                    CitationOutcome.FromHttpStatus((int)response.StatusCode),
+                    Describe(response.StatusCode));
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -87,11 +90,6 @@ public sealed class HttpClaimSource(HttpClient client) : IClaimSource
 
     private static bool RefusesHead(HttpStatusCode status) =>
         status is HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotImplemented or HttpStatusCode.Forbidden;
-
-    private static CitationStatus Classify(HttpStatusCode status) =>
-        (int)status is >= 200 and < 300 ? CitationStatus.Resolves
-            : status is HttpStatusCode.NotFound or HttpStatusCode.Gone ? CitationStatus.Dead
-            : CitationStatus.Unreachable;
 
     private static string Describe(HttpStatusCode status) => (int)status switch
     {

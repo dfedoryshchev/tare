@@ -99,7 +99,10 @@ public sealed class CrossrefClaimSource : IClaimSource
 
                 if (response.StatusCode != HttpStatusCode.TooManyRequests)
                 {
-                    return new CitationCheck(citation, Classify(response.StatusCode), Describe(response));
+                    return new CitationCheck(
+                        citation,
+                        CitationOutcome.FromHttpStatus((int)response.StatusCode),
+                        Describe(response));
                 }
 
                 // Out of attempts, or asked to wait longer than a citation check should sit
@@ -193,11 +196,6 @@ public sealed class CrossrefClaimSource : IClaimSource
 
         return null;
     }
-
-    private static CitationStatus Classify(HttpStatusCode status) =>
-        (int)status is >= 200 and < 300 ? CitationStatus.Resolves
-            : status is HttpStatusCode.NotFound or HttpStatusCode.Gone ? CitationStatus.Dead
-            : CitationStatus.Unreachable;
 
     /// <summary>We waited as asked, as often as we are willing to, and it is still refusing.</summary>
     private static string Exhausted(int attempts) =>
