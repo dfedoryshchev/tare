@@ -85,18 +85,27 @@ namespace Tare.Http;
 /// there, with a test that proves it first.
 /// </para>
 /// <para>
-/// Not wired into <see cref="Analyzer"/> or the CLI. <c>Analyzer.Analyze</c> is synchronous and
-/// pure; handing it a verifier makes it async and every caller with it, pairing a claim with
-/// the citation it points at is still an open question with no corpus behind it, and emitting
-/// a verification into a report needs a rule id. None of that is this class's to decide, so
-/// there is no finding and no rule id here.
+/// <see cref="Analyzer.AnalyzeAsync"/> is what calls this, and the three questions that had to
+/// be settled before anything could were settled there rather than here. The synchronous
+/// <c>Analyzer.Analyze</c> did not move - the async entry point stands beside it, so nothing
+/// that was not asking for a verifier became async. A claim is paired with a citation only when
+/// the URL sits inside that claim's own sentence, which is the pairing the document itself
+/// asserted. And a verdict that reaches a report does so as
+/// <see cref="RuleIds.UnsupportedCitation"/>, below the deterministic warnings. What has not
+/// changed is the division: this answers the question, and what an answer costs an author is
+/// not its call.
 /// </para>
 /// </remarks>
 public sealed partial class ClaudeClaimVerifier(
     HttpClient sources, HttpClient service, string? apiKey, ClaudeVerifierOptions? options = null) : IClaimVerifier
 {
-    /// <summary>Where <see cref="Create"/> looks for the key. Nothing else reads it.</summary>
-    private const string KeyVariable = "ANTHROPIC_API_KEY";
+    /// <summary>
+    /// Where <see cref="Create"/> looks for the key. Named rather than hidden so a front-end
+    /// offering this layer can tell a user it is switched off: with no key every answer is
+    /// <see cref="ClaimSupport.Unknown"/>, which is indistinguishable in a report from every
+    /// source checking out, and a run that verified nothing should say so.
+    /// </summary>
+    public const string KeyVariable = "ANTHROPIC_API_KEY";
 
     /// <summary>The longest reason that reaches a report, in characters.</summary>
     private const int ReasonLimit = 240;

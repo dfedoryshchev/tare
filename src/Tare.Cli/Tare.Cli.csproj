@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Tare.Core\Tare.Core.csproj" />
+    <ProjectReference Include="..\Tare.Http\Tare.Http.csproj" />
   </ItemGroup>
 
   <ItemGroup>

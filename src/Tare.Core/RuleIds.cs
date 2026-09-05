@@ -15,4 +15,7 @@ public static class RuleIds
 
     /// <summary>A prose block leans on filler phrases.</summary>
     public const string Filler = "FILLER001";
+
+    /// <summary>A cited source was read and does not back the claim it is cited for.</summary>
+    public const string UnsupportedCitation = "CITE001";
 }

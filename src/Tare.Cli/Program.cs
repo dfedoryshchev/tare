@@ -2,10 +2,14 @@ using System.CommandLine;
 using System.Text.Json;
 using Tare.Cli;
 using Tare.Core;
+using Tare.Http;
 
 // Two verbs now, so the hand-rolled arg walk from the analyze-only days is gone.
 // System.CommandLine owns routing, help and error text; everything below is glue between the
 // parsed values and Tare.Core, which still does no IO of its own.
+//
+// This is also where the adapters get built. Tare.Core names the citation questions and never
+// learns who answers them, so choosing an answerer is a front-end decision and lives here.
 
 var fileArgument = new Argument<FileInfo>("file")
 {
@@ -22,6 +26,13 @@ var configOption = new Option<FileInfo?>("--config")
     Description = "path to a tare.json; defaults to one in the working directory if present",
 };
 
+var verifyOption = new Option<bool>("--verify")
+{
+    Description = "also read each cited source and ask whether it backs the claim it is cited "
+                  + "for; needs ANTHROPIC_API_KEY, costs one model call per cited claim, and "
+                  + "never changes the score",
+};
+
 var corpusOption = new Option<DirectoryInfo>("--corpus")
 {
     Description = "the labeled corpus directory (expects manifest.json and cases/)",
@@ -33,9 +44,10 @@ var analyze = new Command("analyze", "Score a document and report its findings")
     fileArgument,
     jsonOption,
     configOption,
+    verifyOption,
 };
 
-analyze.SetAction(parse =>
+analyze.SetAction(async (parse, cancellationToken) =>
 {
     var file = parse.GetValue(fileArgument)!;
     if (!file.Exists)
@@ -49,13 +61,20 @@ analyze.SetAction(parse =>
         return 1;
     }
 
-    var result = Analyzer.Analyze(File.ReadAllText(file.FullName), options);
+    var source = File.ReadAllText(file.FullName);
+    var result = parse.GetValue(verifyOption)
+        ? await Analyzer.AnalyzeAsync(source, Verifier(), options, cancellationToken)
+        : Analyzer.Analyze(source, options);
+
     Console.Write(parse.GetValue(jsonOption)
         ? JsonReport.Serialize(result) + "\n"
         : Reporter.Render(file.Name, result));
     return 0;
 });
 
+// No --verify here, and it is not an omission. Bench measures the deterministic rules against
+// hand-read labels; an answer that varies between runs, costs money and has no labeled set
+// behind it would make the precision number mean nothing.
 var bench = new Command("bench", "Score the analyzer against the labeled corpus")
 {
     corpusOption,
@@ -115,7 +134,23 @@ var root = new RootCommand("tare - writing-integrity checks for long-form drafts
     bench,
 };
 
-return root.Parse(args).Invoke();
+return await root.Parse(args).InvokeAsync();
+
+// Who answers the support question. With no key the model adapter would answer Unknown for
+// every claim, which reads in a report exactly like every source checking out, so the absence
+// is reported and the run falls back to the verifier that asks nobody. Either way the
+// deterministic report is the same one `analyze` prints without the flag.
+static IClaimVerifier Verifier()
+{
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(ClaudeClaimVerifier.KeyVariable)))
+    {
+        return ClaudeClaimVerifier.Create();
+    }
+
+    Console.Error.WriteLine(
+        $"note: --verify needs {ClaudeClaimVerifier.KeyVariable} to be set; nothing was verified");
+    return NoClaimVerifier.Instance;
+}
 
 // An explicit --config wins; otherwise a tare.json beside the working directory is picked up
 // automatically; otherwise the calibrated defaults apply. Returns false once it has reported.
