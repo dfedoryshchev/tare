@@ -25,17 +25,16 @@ public sealed class HttpClaimSource(HttpClient client) : IClaimSource
     private const int MaxRedirects = 5;
 
     /// <summary>
-    /// Builds a client configured for citation checks: a short timeout, a capped redirect
-    /// chain, and an honest user agent so a maintainer reading their logs can tell what this
-    /// traffic is.
+    /// Builds a client configured for citation checks: a short timeout, no redirect following
+    /// in the transport, and an honest user agent so a maintainer reading their logs can tell
+    /// what this traffic is.
     /// </summary>
     public static HttpClaimSource Create(TimeSpan? timeout = null)
     {
-        var handler = new SocketsHttpHandler
-        {
-            AllowAutoRedirect = true,
-            MaxAutomaticRedirections = MaxRedirects,
-        };
+        // The transport would follow redirects without asking CitationPolicy again, which is
+        // how a public URL that 302s to a link-local address gets fetched anyway. The chain is
+        // walked in Follow instead, where the policy sees every hop.
+        var handler = new SocketsHttpHandler { AllowAutoRedirect = false };
 
         var configured = new HttpClient(handler) { Timeout = timeout ?? DefaultTimeout };
         configured.DefaultRequestHeaders.UserAgent.ParseAdd("tare/0.1 (+citation-check)");
@@ -53,15 +52,20 @@ public sealed class HttpClaimSource(HttpClient client) : IClaimSource
 
         try
         {
-            var response = await Send(HttpMethod.Head, citation.Url, cancellationToken);
+            var (response, hopRefusal) = await Follow(HttpMethod.Head, citation.Url, cancellationToken);
 
             // Plenty of servers, and most CDNs in front of them, answer HEAD with a refusal
             // and the same URL with a GET. Treating that refusal as an answer about the page
             // would report live sources as broken, so it costs one more request to be sure.
-            if (RefusesHead(response.StatusCode))
+            if (response is { } head && RefusesHead(head.StatusCode))
             {
-                response.Dispose();
-                response = await Send(HttpMethod.Get, citation.Url, cancellationToken);
+                head.Dispose();
+                (response, hopRefusal) = await Follow(HttpMethod.Get, citation.Url, cancellationToken);
+            }
+
+            if (response is null)
+            {
+                return new CitationCheck(citation, CitationStatus.Skipped, "not fetched: " + hopRefusal);
             }
 
             using (response)
@@ -84,9 +88,60 @@ public sealed class HttpClaimSource(HttpClient client) : IClaimSource
         }
     }
 
-    private Task<HttpResponseMessage> Send(HttpMethod method, string url, CancellationToken cancellationToken) =>
+    /// <summary>
+    /// Walks the redirect chain a hop at a time so <see cref="CitationPolicy"/> gets a say at
+    /// every one of them. Returns the response the chain came to rest on, or the policy's
+    /// reason for declining to take a hop - in which case nothing was sent to that target.
+    /// The walk gives up after <see cref="MaxRedirects"/> hops and hands back whatever it is
+    /// holding, which is still a redirect and so is never read as an answer about the page.
+    /// </summary>
+    private async Task<(HttpResponseMessage? Response, string? Refusal)> Follow(
+        HttpMethod method, string url, CancellationToken cancellationToken)
+    {
+        var current = new Uri(url);
+        var response = await Send(method, current, cancellationToken);
+
+        for (var hop = 0; hop < MaxRedirects; hop++)
+        {
+            if (NextHop(response, current) is not { } next)
+            {
+                break;
+            }
+
+            if (CitationPolicy.Reject(next.AbsoluteUri) is { } refusal)
+            {
+                response.Dispose();
+                return (null, refusal);
+            }
+
+            // A redirect out of https into http would finish the chain in the clear, so the
+            // walk stops on the redirect rather than following it down.
+            if (current.Scheme == Uri.UriSchemeHttps && next.Scheme != Uri.UriSchemeHttps)
+            {
+                break;
+            }
+
+            response.Dispose();
+            current = next;
+            response = await Send(method, current, cancellationToken);
+        }
+
+        return (response, null);
+    }
+
+    private static Uri? NextHop(HttpResponseMessage response, Uri from) =>
+        IsRedirect(response.StatusCode)
+        && response.Headers.Location is { } location
+        && Uri.TryCreate(from, location, out var target)
+            ? target
+            : null;
+
+    private Task<HttpResponseMessage> Send(HttpMethod method, Uri url, CancellationToken cancellationToken) =>
         client.SendAsync(
             new HttpRequestMessage(method, url), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+    private static bool IsRedirect(HttpStatusCode status) =>
+        (int)status is 300 or 301 or 302 or 303 or 307 or 308;
 
     private static bool RefusesHead(HttpStatusCode status) =>
         status is HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotImplemented or HttpStatusCode.Forbidden;

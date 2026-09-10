@@ -13,9 +13,12 @@ namespace Tare.Core;
 /// reported as <see cref="CitationStatus.Skipped"/> rather than checked.
 /// <para>
 /// Pure by design: it reads the URL and nothing else, which keeps it in the core and
-/// testable offline. That leaves one gap worth naming - a public hostname that resolves to
-/// a private address passes here, because catching it needs the resolved address, which
-/// only the adapter holding the socket can see.
+/// testable offline. Two limits follow from that, and both are the adapter's to cover. A
+/// public hostname that resolves to a private address passes here, because catching it
+/// needs the resolved address, which only the adapter holding the socket can see. And a URL
+/// that passes says nothing about where a redirect from it leads, so an adapter that
+/// follows redirects has to ask again at every hop; asking only about the URL the document
+/// named leaves the rest of the chain unguarded.
 /// </para>
 /// </summary>
 public static class CitationPolicy
@@ -68,6 +71,8 @@ public static class CitationPolicy
         {
             return address.IsIPv6LinkLocal ? "link-local address"
                 : address.IsIPv6UniqueLocal ? "private address"
+                : address.IsIPv6SiteLocal ? "private address"
+                : address.IsIPv6Multicast ? "multicast address"
                 : address.Equals(IPAddress.IPv6Any) ? "unspecified address"
                 : null;
         }
@@ -77,10 +82,15 @@ public static class CitationPolicy
         {
             0 => "unspecified address",
             10 => "private address",
+            // Carrier-grade NAT is 100.64.0.0/10, so the second octet decides it. Refusing the
+            // whole of 100.x would take 100.0.x through 100.63.x with it, and those are public.
+            100 when octets[1] is >= 64 and <= 127 => "private address",
             127 => "loopback address",
             169 when octets[1] == 254 => "link-local address",
             172 when octets[1] is >= 16 and <= 31 => "private address",
             192 when octets[1] == 168 => "private address",
+            >= 224 and <= 239 => "multicast address",
+            >= 240 => "reserved address",
             _ => null,
         };
     }

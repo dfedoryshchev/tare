@@ -38,6 +38,34 @@ public class CitationPolicyTests
         Assert.NotNull(CitationPolicy.Reject(url));
     }
 
+    [Theory]
+    [InlineData("http://100.64.0.1/meta")]
+    [InlineData("http://100.127.255.255/meta")]
+    [InlineData("https://[::ffff:100.64.0.1]/meta")]
+    [InlineData("http://224.0.0.1/meta")]
+    [InlineData("http://239.255.255.255/meta")]
+    [InlineData("http://240.0.0.1/meta")]
+    [InlineData("http://255.255.255.255/meta")]
+    [InlineData("http://[fec0::1]/meta")]
+    [InlineData("http://[feff::1]/meta")]
+    [InlineData("http://[ff00::1]/meta")]
+    [InlineData("http://[ff02::1]/meta")]
+    public void Rejects_an_address_that_is_not_routable_on_the_public_internet(string url)
+    {
+        Assert.NotNull(CitationPolicy.Reject(url));
+    }
+
+    [Theory]
+    [InlineData("https://99.255.255.255/report")]
+    [InlineData("https://100.0.0.1/report")]
+    [InlineData("https://100.63.255.255/report")]
+    [InlineData("https://100.128.0.1/report")]
+    [InlineData("https://223.255.255.255/report")]
+    public void Accepts_a_public_address_next_to_a_refused_range(string url)
+    {
+        Assert.Null(CitationPolicy.Reject(url));
+    }
+
     [Fact]
     public void Rejects_a_url_carrying_credentials()
     {

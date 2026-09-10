@@ -14,6 +14,9 @@ public class HttpClaimSourceTests
 {
     private static Citation Cited(string url) => new(url, 0, 0, url.Length);
 
+    private static HttpResponseMessage Redirect(string location) =>
+        new(HttpStatusCode.Found) { Headers = { Location = new Uri(location, UriKind.RelativeOrAbsolute) } };
+
     [Fact]
     public async Task Resolves_a_url_that_answers_a_head_request()
     {
@@ -98,6 +101,73 @@ public class HttpClaimSourceTests
 
         Assert.Equal(CitationStatus.Skipped, check.Status);
         Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Refuses_a_redirect_hop_the_policy_rejects()
+    {
+        var handler = new StubHandler(_ => Redirect("http://169.254.169.254/latest/meta-data/"));
+        var source = new HttpClaimSource(new HttpClient(handler));
+
+        var check = await source.CheckAsync(Cited("https://example.com/report"));
+
+        Assert.Equal(CitationStatus.Skipped, check.Status);
+        Assert.Contains("link-local", check.Reason);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Follows_a_redirect_to_a_public_url()
+    {
+        var handler = new StubHandler(r => r.RequestUri!.AbsoluteUri == "https://example.com/report"
+            ? Redirect("https://cdn.example.org/report")
+            : new HttpResponseMessage(HttpStatusCode.OK));
+        var source = new HttpClaimSource(new HttpClient(handler));
+
+        var check = await source.CheckAsync(Cited("https://example.com/report"));
+
+        Assert.Equal(CitationStatus.Resolves, check.Status);
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Equal("https://cdn.example.org/report", handler.Requests[1].RequestUri!.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task Resolves_a_relative_redirect_against_the_url_it_came_from()
+    {
+        var handler = new StubHandler(r => r.RequestUri!.AbsolutePath == "/report"
+            ? Redirect("/moved/report")
+            : new HttpResponseMessage(HttpStatusCode.OK));
+        var source = new HttpClaimSource(new HttpClient(handler));
+
+        var check = await source.CheckAsync(Cited("https://example.com/report"));
+
+        Assert.Equal(CitationStatus.Resolves, check.Status);
+        Assert.Equal("https://example.com/moved/report", handler.Requests[1].RequestUri!.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task Stops_at_the_hop_limit_instead_of_following_a_chain_forever()
+    {
+        var hop = 0;
+        var handler = new StubHandler(_ => Redirect($"https://example.com/hop{++hop}"));
+        var source = new HttpClaimSource(new HttpClient(handler));
+
+        var check = await source.CheckAsync(Cited("https://example.com/report"));
+
+        Assert.Equal(CitationStatus.Unreachable, check.Status);
+        Assert.Equal(6, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Refuses_to_follow_a_redirect_that_drops_https_for_http()
+    {
+        var handler = new StubHandler(_ => Redirect("http://example.com/report"));
+        var source = new HttpClaimSource(new HttpClient(handler));
+
+        var check = await source.CheckAsync(Cited("https://example.com/report"));
+
+        Assert.Equal(CitationStatus.Unreachable, check.Status);
+        Assert.Single(handler.Requests);
     }
 
     [Fact]
