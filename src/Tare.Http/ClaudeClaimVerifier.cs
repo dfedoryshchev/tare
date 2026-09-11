@@ -78,11 +78,13 @@ namespace Tare.Http;
 /// an address chosen by the document under analysis a one-line mistake away.
 /// </para>
 /// <para>
-/// A gap carried in from <see cref="HttpClaimSource"/> rather than introduced here, and named
-/// so it is not undocumented twice: <see cref="Create"/> follows redirects, and
-/// <see cref="CitationPolicy"/> is applied to the cited URL only, so a public URL that
-/// redirects to a private address is followed. It belongs to the same guard and wants fixing
-/// there, with a test that proves it first.
+/// <b>The URL a draft names is the start of the chain, not the whole of it.</b> A public URL
+/// that redirects to a private address would defeat a filter applied once, so the transport
+/// is told not to follow anything and the chain is walked a hop at a time with
+/// <see cref="CitationPolicy"/> asked about each resolved target before it is requested. A
+/// refused hop reads out as <see cref="ClaimSupport.Unknown"/> with the policy's reason, the
+/// same answer a refused cited URL already gives. <see cref="HttpClaimSource"/> guards its own
+/// fetch the same way, which is the guard both of them belong to.
 /// </para>
 /// <para>
 /// <see cref="Analyzer.AnalyzeAsync"/> is what calls this, and the three questions that had to
@@ -138,11 +140,10 @@ public sealed partial class ClaudeClaimVerifier(
     {
         var settings = options ?? ClaudeVerifierOptions.Default;
 
-        var handler = new SocketsHttpHandler
-        {
-            AllowAutoRedirect = true,
-            MaxAutomaticRedirections = MaxRedirects,
-        };
+        // The transport would follow redirects without asking CitationPolicy again, which is
+        // how a public URL that 302s to a link-local address gets fetched anyway. The chain is
+        // walked in Follow instead, where the policy sees every hop.
+        var handler = new SocketsHttpHandler { AllowAutoRedirect = false };
 
         var fetcher = new HttpClient(handler) { Timeout = timeout ?? DefaultSourceTimeout };
         fetcher.DefaultRequestHeaders.UserAgent.ParseAdd("tare/0.1 (+citation-check)");
@@ -222,9 +223,13 @@ public sealed partial class ClaudeClaimVerifier(
 
     private async Task<Source> Fetch(string url, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await sources.SendAsync(
-            request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        var (found, hopRefusal) = await Follow(url, cancellationToken);
+        if (found is null)
+        {
+            return new Source("not fetched: " + hopRefusal, string.Empty);
+        }
+
+        using var response = found;
 
         if (!response.IsSuccessStatusCode)
         {
@@ -247,6 +252,66 @@ public sealed partial class ClaudeClaimVerifier(
         return new Source(
             null, text.Length > settings.MaxSourceCharacters ? text[..settings.MaxSourceCharacters] : text);
     }
+
+    /// <summary>
+    /// Walks the redirect chain a hop at a time so <see cref="CitationPolicy"/> gets a say at
+    /// every one of them, rather than only at the URL the draft named. Returns the response the
+    /// chain came to rest on, or the policy's reason for declining a hop - in which case nothing
+    /// was sent to that target. The walk gives up after <see cref="MaxRedirects"/> hops and
+    /// hands back whatever it is holding, which is still a redirect and so is never read as a
+    /// source.
+    /// </summary>
+    private async Task<(HttpResponseMessage? Response, string? Refusal)> Follow(
+        string url, CancellationToken cancellationToken)
+    {
+        var current = new Uri(url);
+        var response = await Send(current, cancellationToken);
+
+        for (var hop = 0; hop < MaxRedirects; hop++)
+        {
+            if (NextHop(response, current) is not { } next)
+            {
+                break;
+            }
+
+            // The policy answers before the scheme check below, so a hop that is both private
+            // and in the clear is reported as the private address it is.
+            if (CitationPolicy.Reject(next.AbsoluteUri) is { } refusal)
+            {
+                response.Dispose();
+                return (null, refusal);
+            }
+
+            // A redirect out of https into http would finish the chain in the clear, so the
+            // walk stops on the redirect rather than following it down.
+            if (current.Scheme == Uri.UriSchemeHttps && next.Scheme != Uri.UriSchemeHttps)
+            {
+                break;
+            }
+
+            response.Dispose();
+            current = next;
+            response = await Send(current, cancellationToken);
+        }
+
+        return (response, null);
+    }
+
+    private static Uri? NextHop(HttpResponseMessage response, Uri from) =>
+        IsRedirect(response.StatusCode)
+        && response.Headers.Location is { } location
+        && Uri.TryCreate(from, location, out var target)
+            ? target
+            : null;
+
+    private Task<HttpResponseMessage> Send(Uri url, CancellationToken cancellationToken) =>
+        sources.SendAsync(
+            new HttpRequestMessage(HttpMethod.Get, url),
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+
+    private static bool IsRedirect(HttpStatusCode status) =>
+        (int)status is 300 or 301 or 302 or 303 or 307 or 308;
 
     /// <summary>
     /// Reads at most <see cref="ClaudeVerifierOptions.MaxDownloadCharacters"/> off the wire.

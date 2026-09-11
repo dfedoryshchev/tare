@@ -32,6 +32,15 @@ public class ClaudeClaimVerifierTests
             Content = new StringContent(html, Encoding.UTF8, mediaType),
         });
 
+    private static HttpResponseMessage Served(string html) =>
+        new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(html, Encoding.UTF8, "text/html"),
+        };
+
+    private static HttpResponseMessage Redirect(string location) =>
+        new(HttpStatusCode.Found) { Headers = { Location = new Uri(location, UriKind.RelativeOrAbsolute) } };
+
     /// <summary>The wire shape of one answer, built the way the service documents it.</summary>
     private static string Message(string verdict, string reason, string stopReason) =>
         JsonSerializer.Serialize(new
@@ -472,6 +481,84 @@ public class ClaudeClaimVerifierTests
 
         Assert.Equal(ClaimSupport.Unknown, verification.Support);
         Assert.Empty(source.Requests);
+        Assert.Empty(service.Requests);
+    }
+
+    [Fact]
+    public async Task Refuses_a_redirect_hop_the_policy_rejects()
+    {
+        var source = new StubHandler(_ => Redirect("http://169.254.169.254/latest/meta-data/"));
+        var service = Answers("supported");
+        var verifier = Verifier(source, service);
+
+        var verification = await verifier.VerifyAsync(
+            Claimed("Throughput rose 40% after the change."), Cited("https://example.com/report"));
+
+        Assert.Equal(ClaimSupport.Unknown, verification.Support);
+        Assert.Contains("link-local", verification.Reason);
+        Assert.Single(source.Requests);
+        Assert.Empty(service.Requests);
+    }
+
+    [Fact]
+    public async Task Follows_a_redirect_to_a_public_url()
+    {
+        var source = new StubHandler(request => request.RequestUri!.AbsoluteUri == "https://example.com/report"
+            ? Redirect("https://cdn.example.org/report")
+            : Served("<p>Throughput rose by two fifths after the patch.</p>"));
+        var service = Answers("supported");
+        var verifier = Verifier(source, service);
+
+        var verification = await verifier.VerifyAsync(
+            Claimed("Throughput rose 40% after the change."), Cited("https://example.com/report"));
+
+        Assert.Equal(ClaimSupport.Supported, verification.Support);
+        Assert.Equal(2, source.Requests.Count);
+        Assert.Equal("https://cdn.example.org/report", source.Requests[1].RequestUri!.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task Resolves_a_relative_redirect_against_the_url_it_came_from()
+    {
+        var source = new StubHandler(request => request.RequestUri!.AbsolutePath == "/report"
+            ? Redirect("/moved/report")
+            : Served("<p>Throughput rose by two fifths after the patch.</p>"));
+        var verifier = Verifier(source, Answers("supported"));
+
+        await verifier.VerifyAsync(
+            Claimed("Throughput rose 40% after the change."), Cited("https://example.com/report"));
+
+        Assert.Equal("https://example.com/moved/report", source.Requests[1].RequestUri!.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task Stops_at_the_hop_limit_instead_of_following_a_chain_forever()
+    {
+        var hop = 0;
+        var source = new StubHandler(_ => Redirect($"https://example.com/hop{++hop}"));
+        var service = Answers("supported");
+        var verifier = Verifier(source, service);
+
+        var verification = await verifier.VerifyAsync(
+            Claimed("Throughput rose 40% after the change."), Cited("https://example.com/report"));
+
+        Assert.Equal(ClaimSupport.Unknown, verification.Support);
+        Assert.Equal(6, source.Requests.Count);
+        Assert.Empty(service.Requests);
+    }
+
+    [Fact]
+    public async Task Refuses_to_follow_a_redirect_that_drops_https_for_http()
+    {
+        var source = new StubHandler(_ => Redirect("http://example.com/report"));
+        var service = Answers("supported");
+        var verifier = Verifier(source, service);
+
+        var verification = await verifier.VerifyAsync(
+            Claimed("Throughput rose 40% after the change."), Cited("https://example.com/report"));
+
+        Assert.Equal(ClaimSupport.Unknown, verification.Support);
+        Assert.Single(source.Requests);
         Assert.Empty(service.Requests);
     }
 
