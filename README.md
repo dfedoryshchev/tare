@@ -168,6 +168,14 @@ config is malformed" points the wrong person at the wrong fix.
 `--fail-on clean` is accepted and refuses every document, because every document is at least
 clean. That is a real setting for proving the step is wired up.
 
+Those three exit codes are all a pipeline needs; no adapter is required. A flow runner can
+call `tare analyze <file> --fail-on slop` as a command step, stop on a non-zero exit and keep
+the stderr line as the reason. [agentweft](https://github.com/dfedoryshchev/agentweft) does
+exactly that, and its
+[tare-gate example](https://github.com/dfedoryshchev/agentweft/tree/master/examples/tare-gate)
+is a runnable version: a reviewer step told to source every number, and tare as the check on
+whether it did.
+
 ## Citation verification (optional, off by default)
 
 The deterministic pass counts a claim as grounded when it carries a link. It does not read
