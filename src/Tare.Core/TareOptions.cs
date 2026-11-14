@@ -41,6 +41,12 @@ public sealed record TareOptions
     /// <summary>The filler lexicon in effect: the built-in phrases plus any from config.</summary>
     public IReadOnlyList<string> Filler { get; init; } = FillerLexicon.Default;
 
+    /// <summary>
+    /// Path to an external lexicon file, as written in the config. Resolving and reading it is
+    /// the caller's job; its phrases go in through <see cref="WithFiller"/>.
+    /// </summary>
+    public string? FillerFile { get; init; }
+
     /// <summary>The calibrated defaults, used whenever no config is supplied.</summary>
     public static TareOptions Default { get; } = new();
 
@@ -80,8 +86,18 @@ public sealed record TareOptions
             MinFillerHits = dto.Density?.MinFillerHits ?? d.MinFillerHits,
             MinClaimsForReliability = dto.Grounding?.MinClaims ?? d.MinClaimsForReliability,
             Filler = filler,
+            FillerFile = dto.FillerFile,
         };
     }
+
+    /// <summary>
+    /// Extends the lexicon in effect with more phrases (lower-cased to match), never replacing
+    /// it. A phrase already present is not added again, since each entry counts as one hit.
+    /// </summary>
+    public TareOptions WithFiller(IEnumerable<string> phrases) => this with
+    {
+        Filler = Filler.Concat(phrases.Select(p => p.ToLowerInvariant())).Distinct().ToList(),
+    };
 
     // Nullable mirror of the tare.json schema: a missing section or field stays null and the
     // corresponding default survives the merge above.
@@ -92,6 +108,7 @@ public sealed record TareOptions
         public DensityDto? Density { get; init; }
         public GroundingDto? Grounding { get; init; }
         public List<string>? Filler { get; init; }
+        public string? FillerFile { get; init; }
     }
 
     private sealed record WeightsDto

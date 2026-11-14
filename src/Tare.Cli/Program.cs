@@ -210,11 +210,27 @@ static bool TryLoadOptions(FileInfo? explicitConfig, out TareOptions options)
     try
     {
         options = TareOptions.FromJson(File.ReadAllText(path));
-        return true;
     }
     catch (JsonException ex)
     {
         Console.Error.WriteLine($"error: invalid config {path}: {ex.Message}");
         return false;
     }
+
+    if (options.FillerFile is null)
+    {
+        return true;
+    }
+
+    // Relative to the config, not the working directory, so a config and its lexicon can move
+    // together and still find each other.
+    var lexicon = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, options.FillerFile);
+    if (!File.Exists(lexicon))
+    {
+        Console.Error.WriteLine($"error: filler file not found: {lexicon}");
+        return false;
+    }
+
+    options = options.WithFiller(FillerLexicon.Parse(File.ReadAllText(lexicon)));
+    return true;
 }

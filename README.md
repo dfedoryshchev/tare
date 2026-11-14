@@ -133,6 +133,10 @@ Any field left out keeps its default, so a partial file is enough to nudge one t
 `filler` array extends the built-in lexicon; it never replaces it. A malformed config is a
 clean error rather than an analysis run with half-applied settings.
 
+A longer list can live in its own file. Set `"fillerFile": "filler.txt"` and tare reads it
+relative to the config: one phrase per line, blank lines and lines starting with `#` skipped.
+Its phrases extend the lexicon the same way the array does, and a missing file is an error.
+
 ## The pre-publish gate
 
 `--fail-on <band>` turns a report into a decision. The bar is the lowest band that fails, so

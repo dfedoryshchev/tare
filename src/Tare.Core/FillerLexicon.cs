@@ -23,6 +23,18 @@ public static class FillerLexicon
         "in the world of",
     };
 
+    /// <summary>
+    /// Reads a lexicon file's text: one phrase per line, trimmed and lower-cased; blank lines
+    /// and lines starting with <c>#</c> are skipped. Takes the text, not a path, so the core
+    /// stays free of file access.
+    /// </summary>
+    public static IReadOnlyList<string> Parse(string text) =>
+        text.Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0 && !line.StartsWith('#'))
+            .Select(line => line.ToLowerInvariant())
+            .ToList();
+
     /// <summary>Returns the filler phrases present in the text (lowercased match), in order.</summary>
     public static IReadOnlyList<string> Hits(string text, IReadOnlyList<string> phrases)
     {

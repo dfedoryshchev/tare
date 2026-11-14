@@ -78,6 +78,45 @@ public class TareOptionsTests
     }
 
     [Fact]
+    public void FromJson_binds_the_filler_file_path()
+    {
+        var options = TareOptions.FromJson("""{ "fillerFile": "lexicon/filler.txt" }""");
+
+        Assert.Equal("lexicon/filler.txt", options.FillerFile);
+        Assert.Null(TareOptions.Default.FillerFile);
+    }
+
+    [Fact]
+    public void Parse_reads_one_phrase_per_line_and_skips_blanks_and_comments()
+    {
+        var phrases = FillerLexicon.Parse("# team phrases\r\n  As We All Know  \n\n   # indented note\nmoving the needle\n");
+
+        Assert.Equal(["as we all know", "moving the needle"], phrases);
+    }
+
+    [Fact]
+    public void WithFiller_extends_the_lexicon_and_the_new_phrases_are_detected()
+    {
+        const string doc = "As we all know, the plan simply moves forward from here.\n";
+        var options = TareOptions.FromJson("""{ "density": { "minFillerHits": 1 } }""")
+            .WithFiller(FillerLexicon.Parse("as we all know\n"));
+
+        Assert.Contains("it is important to note", options.Filler);
+        Assert.Contains(RuleIds.Filler, Analyzer.Analyze(doc, options).Findings.Select(f => f.RuleId));
+    }
+
+    [Fact]
+    public void WithFiller_does_not_count_a_repeated_phrase_twice()
+    {
+        // a file repeating a built-in phrase must not let one occurrence clear the two-hit bar
+        const string doc = "At the end of the day, the plan simply moves forward from here.\n";
+        var options = TareOptions.Default.WithFiller(["at the end of the day", "at the end of the day"]);
+
+        Assert.Single(options.Filler, p => p == "at the end of the day");
+        Assert.DoesNotContain(RuleIds.Filler, Analyzer.Analyze(doc, options).Findings.Select(f => f.RuleId));
+    }
+
+    [Fact]
     public void Config_min_claims_drives_grounding_reliability()
     {
         // two claims, one grounded: reliable under a min of 2, unreliable under the default of 3
